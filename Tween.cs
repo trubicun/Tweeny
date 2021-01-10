@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using static FUGames.Tween.Function;
 using static FUGames.Tween.Animation;
+using System.Linq;
 
 namespace FUGames
 {
@@ -28,9 +29,9 @@ namespace FUGames
                 }
             }
 
-            public void AddObject(TweenData tweenData)
+            public void AddObject(AnimationName animation, FunctionName function, float duration, GameObject gameObject, params object[] customData)
             {
-                //TweenObjects.Add(new TweenObject(tweenData));
+                TweenObjects.Add(new TweenObject(animation, function, duration, gameObject, customData));
             }
 
             public void DeleteObject(TweenObject animatedObject)
@@ -41,35 +42,51 @@ namespace FUGames
             [Serializable]
             public class TweenObject
             {
-                public List<TweenData> Tweens { get; private set; }
+                public Queue<TweenData> Tweens { get; private set; }
+                public TweenData CurrentAnimation { get; private set; }
 
                 public TweenObject(AnimationName animation, FunctionName function, float duration, GameObject gameObject, params object[] customData)
                 {
-                    Tweens = new List<TweenData>();
-                    Tweens.Add(new TweenData(animation,function,duration,gameObject,customData));
-                    Start();
+                    Tweens = new Queue<TweenData>();
+                    Tweens.Enqueue(new TweenData(animation,function,duration,gameObject,customData));
                 }
 
                 public void Start()
                 {
-                    Tweens[0].Play();
+                    if (Tweens.Count > 0)
+                    {
+                        CurrentAnimation = Tweens.Dequeue();
+                        CurrentAnimation.Play();
+                        CurrentAnimation.AnimationEnd += Start;
+                    }
                 }
 
                 public void AddAnimation(AnimationName animation, FunctionName function, float duration, GameObject gameObject, params object[] customData)
                 {
-                    Tweens.Add(new TweenData(animation,function,duration,gameObject,customData));
+                    Tweens.Enqueue(new TweenData(animation,function,duration,gameObject,customData));
                 }
 
-                public void DeleteAnimation(TweenData tweenData)
+                public void DeleteAnimation()
                 {
-                    Tweens.Remove(tweenData);
+                    Tweens.Dequeue();
                 }
                
+                private IEnumerator Play()
+                {
+                    while(true)
+                    {
+                        Debug.Log("QUEQUE LAST " + Tweens.Peek().GameObject);
+                        yield return null;
+                    }
+                }
+
 
                 //For CustomEditor
-                public void SetAnimation(int index, TweenData tweenData)
+                public void SetAnimation(TweenData tweenData)
                 {
-                    Tweens[index] = tweenData;
+                    TweenData data = Tweens.Dequeue();
+                    data = new TweenData(tweenData.Animation, tweenData.Function, tweenData.Duration, tweenData.GameObject, tweenData.CustomData);
+                    Tweens.Enqueue(data);
                 }
 
             }
@@ -80,10 +97,10 @@ namespace FUGames
                 public FunctionName Function { get; private set; }
                 public float Duration { get; private set; }
                 public GameObject GameObject { get; private set; }
-
                 public object[] CustomData { get; private set; }
 
-                private IEnumerator coroutine;
+                public delegate void EventHandler();
+                public event EventHandler AnimationEnd;
 
                 public TweenData(AnimationName animation, FunctionName function, float duration, GameObject gameObject, params object[] customData)
                 {
@@ -96,9 +113,21 @@ namespace FUGames
 
                 public void Play()
                 {
-                    coroutine = Animations[(int)Animation](
+                    IEnumerator animation = Animations[(int)Animation](
                     Functions[(int)Function], Duration, GameObject, CustomData);
-                    Instance.StartCoroutine(coroutine);
+                    Instance.StartCoroutine(animation);
+                    Instance.StartCoroutine(End(Duration));
+                }
+
+                private IEnumerator End(float time)
+                {
+                    float timer = 0;
+                    while(timer < time)
+                    {
+                        timer += Time.deltaTime;
+                        yield return null;
+                    }
+                    AnimationEnd?.Invoke();
                 }
             }
         }
@@ -128,7 +157,7 @@ namespace FUGames
                 Spike
             }
 
-            //Keep this two similar
+            //Keep this names similar
 
             public static FunctionHandler[] Functions = new FunctionHandler[]
             {
@@ -181,7 +210,11 @@ namespace FUGames
                 PingPong,
                 Blinking,
                 Rotation,
-                Scaling
+                Rotate,
+                SpikeRotate,
+                Scaling,
+                Scale,
+                SpikeScale
             }
 
             //Keep this two similar
@@ -192,7 +225,11 @@ namespace FUGames
                 PingPong,
                 Blinking,
                 Rotation,
-                Scaling
+                Rotate,
+                SpikeRotate,
+                Scaling,
+                Scale,
+                SpikeScale
             };
 
             public static IEnumerator Play(AnimationName animation, FunctionName function, float duration,GameObject gameObject, params object[] param)
@@ -208,11 +245,6 @@ namespace FUGames
                 Tween.Instance.StopCoroutine(coroutine);
             }
 
-            public static void Stop(string name)
-            {
-                Tween.Instance.StopCoroutine(name);
-            }
-
             public static IEnumerator Move(FunctionHandler function, float duration, GameObject obj, params object[] param)
             {
                 Vector3 point = GetParam<Vector3>(param);
@@ -224,7 +256,7 @@ namespace FUGames
                     timer += Time.deltaTime;
                     yield return null;
                 }
-                //ВОЗМОЖНО СТОИТ ВОЗВРАЩАТЬ НА МЕСТО ТУТ
+                //ВОЗМОЖНО СТОИТ ВОЗВРАЩАТЬ НА МЕСТО ТУТ ВО ВСЕХ ФУНЦИЯХ ЕСЛИ НУЖНО
             }
 
             public static IEnumerator PingPong(FunctionHandler function, float duration, GameObject obj, params object[] param)
@@ -285,6 +317,34 @@ namespace FUGames
                 }
             }
 
+            public static IEnumerator Rotate(FunctionHandler function, float duration, GameObject obj, params object[] param)
+            {
+                Quaternion startRotation = obj.transform.localRotation;
+                Quaternion endRotation = Quaternion.Euler(GetParam<Vector3>(param));
+                float timer;
+                timer = 0;
+                while (timer < duration)
+                {
+                    obj.transform.localRotation = Quaternion.Lerp(startRotation, endRotation, function(timer / duration));
+                    timer += Time.deltaTime;
+                    yield return null;
+                }
+            }
+
+            public static IEnumerator SpikeRotate(FunctionHandler function, float duration, GameObject obj, params object[] param)
+            {
+                Quaternion startRotation = obj.transform.localRotation;
+                Quaternion endRotation = Quaternion.Euler(GetParam<Vector3>(param));
+                float timer;
+                timer = 0;
+                while (timer < duration)
+                {
+                    obj.transform.localRotation = Quaternion.Lerp(startRotation, endRotation, Spike(function(timer / duration)));
+                    timer += Time.deltaTime;
+                    yield return null;
+                }
+            }
+
             public static IEnumerator Scaling(FunctionHandler function, float duration, GameObject obj, params object[] param)
             {
                 Vector3 startScale = obj.transform.localScale;
@@ -302,7 +362,36 @@ namespace FUGames
                 }
             }
 
-            private static T GetParam<T>(params object[] param)
+            public static IEnumerator Scale(FunctionHandler function, float duration, GameObject obj, params object[] param)
+            {
+                Vector3 startScale = obj.transform.localScale;
+                Vector3 endScale = GetParam<Vector3>(param);
+                float timer;
+                timer = 0;
+                while (timer < duration)
+                {
+                    obj.transform.localScale = Vector3.Lerp(startScale, endScale, function(timer / duration));
+                    timer += Time.deltaTime;
+                    yield return null;
+                }
+            }
+
+            public static IEnumerator SpikeScale(FunctionHandler function, float duration, GameObject obj, params object[] param)
+            {
+                Vector3 startScale = obj.transform.localScale;
+                Vector3 endScale = GetParam<Vector3>(param);
+                float timer;
+                timer = 0;
+                while (timer < duration)
+                {
+                    obj.transform.localScale = Vector3.Lerp(startScale, endScale, Spike(timer / duration));
+                    timer += Time.deltaTime;
+                    yield return null;
+                }
+                obj.transform.localScale = startScale;
+            }
+
+            public static T GetParam<T>(params object[] param)
             {
                 foreach (var item in param)
                 {
@@ -311,7 +400,7 @@ namespace FUGames
                         return (T) item;
                     }
                 }
-                Debug.LogWarning("TWEEN ERROR, no such parameter: " + typeof(T));
+                Debug.LogError("TWEEN ERROR, add data of type " + typeof(T));
                 return default;
             }
         }
