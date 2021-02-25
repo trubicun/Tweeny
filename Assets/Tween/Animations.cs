@@ -2,8 +2,6 @@
 using System;
 using System.Collections;
 using static Tweeny.Function;
-using System.Diagnostics;
-using UnityEngine.UIElements;
 
 namespace Tweeny
 {
