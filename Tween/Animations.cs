@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using System;
 using System.Collections;
-using static FUGames.Tweeny.Function;
+using static Tweeny.Function;
 
 namespace Tweeny
 {

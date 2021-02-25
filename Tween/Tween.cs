@@ -2,8 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using static FUGames.Tweeny.Function;
-using static FUGames.Tweeny.Animation;
+using static Tweeny.Function;
+using static Tweeny.Animation;
 using UnityEngine.UI;
 
 namespace Tweeny
